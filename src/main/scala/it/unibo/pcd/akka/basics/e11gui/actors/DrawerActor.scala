@@ -2,20 +2,17 @@ package it.unibo.pcd.akka.basics.e11gui.actors
 
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
-import it.unibo.pcd.akka.basics.e11gui.view.{
-  DrawablePanel,
-  DrawableRectangle,
-  ElementFactory,
-  SimpleDrawablePanel,
-  SwingElementFactory
-}
+import it.unibo.pcd.akka.basics.e11gui.actors.DrawMessage.Rectangle
+import it.unibo.pcd.akka.basics.e11gui.view.{DrawablePanel, DrawableRectangle, ElementFactory, SimpleDrawablePanel, SwingElementFactory}
 
 import java.awt.Color
 import scala.concurrent.Future
+import scala.concurrent.duration.FiniteDuration
 import scala.swing.SimpleSwingApplication
 import scala.swing.event.MousePressed
 import scala.swing.{Dimension, Frame, MainFrame, SimpleSwingApplication}
-import scala.util.Success
+import scala.util.{Random, Success}
+import scala.concurrent.duration.DurationInt
 
 enum DrawMessage:
   case Rectangle(x: Int, y: Int, width: Int, height: Int)
@@ -45,11 +42,29 @@ object ClickActor:
           drawer ! DrawMessage.Rectangle(x, y, 5, 5)
           Behaviors.same
 
+object IndependentActor:
+  def apply[G](panel: DrawablePanel[G], drawer: akka.actor.typed.ActorRef[DrawMessage]) : Behavior[(Int,Int)] =
+    Behaviors.setup { ctx =>
+      Behaviors.withTimers{ timers =>
+           Behaviors.receiveMessage {
+             case (x,y) =>
+               ctx.log.info(s"point ${x},${y}")
+               timers.startSingleTimer((Random.nextInt(200) + 100, Random.nextInt(200) + 100), 300.millis)
+               drawer ! DrawMessage.Rectangle(x,y, 10, 10)
+               Behaviors.same
+           }
+      }
+    }
+
+
 object MainActor:
   def apply[G](panel: DrawablePanel[G], factory: ElementFactory[G]): Behavior[Nothing] =
     Behaviors.setup: context =>
       val drawer = context.spawn(DrawerActor[G](panel, factory), "drawer")
       val clickActor = context.spawn(ClickActor(panel, drawer), "clickActor")
+      val independentActor = context.spawn(IndependentActor(panel, drawer), "independentActor")
+      independentActor ! (0,0)
+
       Behaviors.empty
 
 object MyDrawingApp extends SimpleSwingApplication:
